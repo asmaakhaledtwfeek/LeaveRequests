@@ -1,0 +1,40 @@
+<span class="status-badge @BadgeClass">@Status</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Status { get; set; } = string.Empty;
+
+    private string BadgeClass => Status switch
+    {
+        "Approved" => "status-approved",
+        "Rejected" => "status-rejected",
+        _ => "status-pending"
+    };
+}
+
+<style>
+    .status-badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 0.78rem;
+        font-weight: 500;
+        border: 1.5px solid;
+        background-color: #fff;
+    }
+
+    .status-approved {
+        color: #198754;
+        border-color: #198754;
+    }
+
+    .status-rejected {
+        color: #dc3545;
+        border-color: #dc3545;
+    }
+
+    .status-pending {
+        color: #e6a817;
+        border-color: #e6a817;
+    }
+</style>

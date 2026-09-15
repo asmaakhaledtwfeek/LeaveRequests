@@ -1,0 +1,384 @@
+@page "/"
+@inject LeaveApiClient Api
+
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0">Leave Requests</h4>
+        <button class="btn btn-primary btn-sm" @onclick="() => showForm = !showForm">
+            @(showForm ? "Cancel" : "+ New Request")
+        </button>
+    </div>
+
+    @if (showForm)
+    {
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="card-title mb-3">Submit Leave Request</h6>
+                <EditForm Model="newRequest" OnValidSubmit="SubmitRequest">
+                    <DataAnnotationsValidator />
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Employee</label>
+                            <InputSelect class="form-select form-select-sm" @bind-Value="newRequest.EmployeeId">
+                                <option value="0">— select employee —</option>
+                                @foreach (var emp in employees)
+                                {
+                                    <option value="@emp.Id">@emp.FullName (@emp.Company?.Department)</option>
+                                }
+                            </InputSelect>
+                            <ValidationMessage For="() => newRequest.EmployeeId" class="text-danger small" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Start Date</label>
+                            <InputDate class="form-control form-control-sm" @bind-Value="newRequest.StartDate" />
+                            <ValidationMessage For="() => newRequest.StartDate" class="text-danger small" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">End Date</label>
+                            <InputDate class="form-control form-control-sm" @bind-Value="newRequest.EndDate" />
+                            <ValidationMessage For="() => newRequest.EndDate" class="text-danger small" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Type</label>
+                            <InputSelect class="form-select form-select-sm" @bind-Value="newRequest.Type">
+                                <option value="">— select —</option>
+                                <option value="Vacation">Vacation</option>
+                                <option value="Sick">Sick</option>
+                                <option value="Unpaid">Unpaid</option>
+                            </InputSelect>
+                            <ValidationMessage For="() => newRequest.Type" class="text-danger small" />
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success btn-sm w-100" disabled="@submitting">
+                                @(submitting ? "Submitting…" : "Submit")
+                            </button>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(formError))
+                    {
+                        <div class="alert alert-danger mt-2 py-2 small">@formError</div>
+                    }
+                </EditForm>
+            </div>
+        </div>
+    }
+
+    <div class="d-flex gap-2 mb-3">
+        <select class="form-select form-select-sm w-auto" @bind="statusFilter" @bind:after="ReloadList">
+            <option value="">All statuses</option>
+            <option value="Pending">Pending</option>
+            <option value="Approved">Approved</option>
+            <option value="Rejected">Rejected</option>
+        </select>
+    </div>
+
+    @if (loadError is not null)
+    {
+        <div class="alert alert-warning">@loadError</div>
+    }
+    else if (loading)
+    {
+        <div class="text-center py-5 text-muted">Loading…</div>
+    }
+    else if (pagedResult is null || pagedResult.Items.Count == 0)
+    {
+        <div class="text-center py-5 text-muted">No leave requests found.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Employee</th>
+                        <th>Department</th>
+                        <th>Dates</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Note</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var req in pagedResult.Items)
+                    {
+                        <tr>
+                            <td>@req.EmployeeName</td>
+                            <td class="text-muted small">@req.Department</td>
+                            <td class="small">@req.StartDate.ToString("MMM d") – @req.EndDate.ToString("MMM d, yyyy")</td>
+                            <td><span class="type-badge type-@(req.Type.ToLower())">@req.Type</span></td>
+                            <td><StatusBadge Status="@req.Status" /></td>
+                            <td class="text-muted small">@req.ReviewerNote</td>
+                            <td class="text-end text-nowrap">
+                                @if (req.Status == "Pending")
+                                {
+                                    <button class="btn btn-outline-success btn-sm me-1"
+                                            @onclick="() => Approve(req)" disabled="@(actionId == req.Id)">
+                                        Approve
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm me-1"
+                                            @onclick="() => ShowRejectModal(req)" disabled="@(actionId == req.Id)">
+                                        Reject
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm"
+                                            @onclick="() => Delete(req)" disabled="@(actionId == req.Id)">
+                                        Delete
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (pagedResult.TotalPages > 1)
+        {
+            <nav>
+                <ul class="pagination pagination-sm">
+                    <li class="page-item @(currentPage == 1 ? "disabled" : "")">
+                        <button class="page-link" @onclick="() => GoToPage(currentPage - 1)">‹</button>
+                    </li>
+                    @for (int p = 1; p <= pagedResult.TotalPages; p++)
+                    {
+                        var pg = p;
+                        <li class="page-item @(pg == currentPage ? "active" : "")">
+                            <button class="page-link" @onclick="() => GoToPage(pg)">@pg</button>
+                        </li>
+                    }
+                    <li class="page-item @(currentPage == pagedResult.TotalPages ? "disabled" : "")">
+                        <button class="page-link" @onclick="() => GoToPage(currentPage + 1)">›</button>
+                    </li>
+                </ul>
+            </nav>
+        }
+    }
+
+    @if (actionError is not null)
+    {
+        <div class="toast-container position-fixed bottom-0 end-0 p-3">
+            <div class="toast show align-items-center text-bg-danger border-0">
+                <div class="d-flex">
+                    <div class="toast-body">@actionError</div>
+                    <button class="btn-close btn-close-white me-2 m-auto" @onclick="() => actionError = null"></button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (rejectTarget is not null)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title">Reject Request</h6>
+                    <button class="btn-close" @onclick="() => rejectTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label small">Reviewer note (optional)</label>
+                    <textarea class="form-control form-control-sm" rows="3" @bind="rejectNote"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary btn-sm" @onclick="() => rejectTarget = null">Cancel</button>
+                    <button class="btn btn-danger btn-sm" @onclick="ConfirmReject">Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private PagedResult<LeaveRequestDto>? pagedResult;
+    private List<EmployeeDto> employees = new();
+    private bool loading = true;
+    private bool showForm = false;
+    private bool submitting = false;
+    private string? loadError;
+    private string? formError;
+    private string? actionError;
+    private string statusFilter = "";
+    private int currentPage = 1;
+    private int? actionId;
+
+    private CreateLeaveRequestModel newRequest = new();
+    private LeaveRequestDto? rejectTarget;
+    private string rejectNote = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEmployees();
+        await LoadRequests();
+    }
+
+    private async Task LoadEmployees()
+    {
+        try
+        {
+            employees = await Api.GetEmployeesAsync() ?? new();
+        }
+        catch
+        {
+            employees = new();
+        }
+    }
+
+    private async Task LoadRequests()
+    {
+        loading = true;
+        loadError = null;
+        try
+        {
+            pagedResult = await Api.GetLeaveRequestsAsync(statusFilter, null, currentPage, 10);
+        }
+        catch (Exception ex)
+        {
+            loadError = $"Failed to load requests: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task ReloadList()
+    {
+        currentPage = 1;
+        await LoadRequests();
+    }
+
+    private async Task GoToPage(int page)
+    {
+        currentPage = page;
+        await LoadRequests();
+    }
+
+    private async Task SubmitRequest()
+    {
+        formError = null;
+        submitting = true;
+        try
+        {
+            var result = await Api.CreateLeaveRequestAsync(new CreateLeaveRequestDto
+            {
+                EmployeeId = newRequest.EmployeeId,
+                StartDate = newRequest.StartDate,
+                EndDate = newRequest.EndDate,
+                Type = newRequest.Type
+            });
+
+            if (result is not null)
+            {
+                showForm = false;
+                newRequest = new();
+                await LoadRequests();
+            }
+        }
+        catch (ApiException ex)
+        {
+            formError = ex.Message;
+        }
+        catch (Exception)
+        {
+            formError = "Request failed. Please try again.";
+        }
+        finally
+        {
+            submitting = false;
+        }
+    }
+
+    private async Task Approve(LeaveRequestDto req)
+    {
+        actionId = req.Id;
+        actionError = null;
+        try
+        {
+            await Api.UpdateStatusAsync(req.Id, "Approved", null);
+            await LoadRequests();
+        }
+        catch (Exception ex)
+        {
+            actionError = ex.Message;
+        }
+        finally
+        {
+            actionId = null;
+        }
+    }
+
+    private void ShowRejectModal(LeaveRequestDto req)
+    {
+        rejectTarget = req;
+        rejectNote = "";
+    }
+
+    private async Task ConfirmReject()
+    {
+        if (rejectTarget is null) return;
+        actionId = rejectTarget.Id;
+        actionError = null;
+        try
+        {
+            await Api.UpdateStatusAsync(rejectTarget.Id, "Rejected", rejectNote);
+            rejectTarget = null;
+            await LoadRequests();
+        }
+        catch (Exception ex)
+        {
+            actionError = ex.Message;
+            rejectTarget = null;
+        }
+        finally
+        {
+            actionId = null;
+        }
+    }
+
+    private async Task Delete(LeaveRequestDto req)
+    {
+        actionId = req.Id;
+        actionError = null;
+        try
+        {
+            await Api.DeleteLeaveRequestAsync(req.Id);
+            await LoadRequests();
+        }
+        catch (Exception ex)
+        {
+            actionError = ex.Message;
+        }
+        finally
+        {
+            actionId = null;
+        }
+    }
+}
+
+<style>
+    .type-badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 0.78rem;
+        font-weight: 500;
+        border: 1.5px solid;
+        background-color: #fff;
+    }
+
+    .type-vacation {
+        color: #0d6efd;
+        border-color: #0d6efd;
+    }
+
+    .type-sick {
+        color: #fd7e14;
+        border-color: #fd7e14;
+    }
+
+    .type-unpaid {
+        color: #6f42c1;
+        border-color: #6f42c1;
+    }
+</style>

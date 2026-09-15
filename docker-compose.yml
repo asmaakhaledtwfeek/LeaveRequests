@@ -1,0 +1,39 @@
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      SA_PASSWORD: "LeaveRequests_SA_2024!"
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Express"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqldata:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "LeaveRequests_SA_2024!" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5050:8080"
+    environment:
+      ConnectionStrings__DefaultConnection: >
+        Server=db;Database=LeaveRequestsDb;
+        User Id=sa;Password=LeaveRequests_SA_2024!;
+        TrustServerCertificate=True;
+      Jwt__Secret: "leave-requests-jwt-secret-key-32chars!!"
+      Jwt__Issuer: "LeaveRequests.API"
+      Jwt__Audience: "LeaveRequests.Web"
+      ASPNETCORE_ENVIRONMENT: "Production"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  sqldata:
