@@ -72,10 +72,4 @@ See `requests.http` for ready-to-run examples.
 
 **Raw SQL** — none. All queries use EF Core with parameterised LINQ. The check constraints in the migration use string literals for allowed values only (not user input).
 
-## What I'd do next with more time
 
-- Add JWT auth with an HR role guard on approve/reject endpoints
-- Expand status transition rules if the business requires (allow HR to cancel approved requests)
-- Add an integration test project covering the status transition logic and the employee-validation path
-- Containerise with Docker Compose (SQL Server + API + WASM served via nginx)
-- Surface paging controls and a date-range filter in the UI
